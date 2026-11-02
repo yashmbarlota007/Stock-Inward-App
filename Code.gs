@@ -107,10 +107,16 @@ function processFormFast(payloadStr) {
     
     function uploadFiles(base64Array) {
       var urls = [];
+      if (!base64Array || !Array.isArray(base64Array)) return "-";
       for (var i = 0; i < base64Array.length; i++) {
         var fileData = base64Array[i];
-        var blob = Utilities.newBlob(Utilities.base64Decode(fileData.data), fileData.mimeType, fileData.name);
-        urls.push(folder.createFile(blob).getUrl());
+        if (!fileData || !fileData.data || fileData.data.length < 50) continue;
+        try {
+          var blob = Utilities.newBlob(Utilities.base64Decode(fileData.data), fileData.mimeType || "image/jpeg", fileData.name || ("photo_" + (i + 1) + ".jpg"));
+          urls.push(folder.createFile(blob).getUrl());
+        } catch (uploadErr) {
+          Logger.log("Upload error for file " + i + ": " + uploadErr.message);
+        }
       }
       return urls.length > 0 ? urls.join(" \n ") : "-";
     }
@@ -126,9 +132,13 @@ function processFormFast(payloadStr) {
       var item = data.items[i];
       
       var pPhotoUrl = "-";
-      if (item.productPhotoB64) {
-        var pBlob = Utilities.newBlob(Utilities.base64Decode(item.productPhotoB64.data), item.productPhotoB64.mimeType, item.productPhotoB64.name);
-        pPhotoUrl = folder.createFile(pBlob).getUrl();
+      if (item.productPhotoB64 && item.productPhotoB64.data && item.productPhotoB64.data.length > 50) {
+        try {
+          var pBlob = Utilities.newBlob(Utilities.base64Decode(item.productPhotoB64.data), item.productPhotoB64.mimeType || "image/jpeg", item.productPhotoB64.name || "prod.jpg");
+          pPhotoUrl = folder.createFile(pBlob).getUrl();
+        } catch (pErr) {
+          Logger.log("Product photo upload error: " + pErr.message);
+        }
       }
 
       rowsToAppend.push([

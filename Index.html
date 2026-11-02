@@ -459,27 +459,136 @@
     checkPhotosRequired(); 
   }
 
-  function compressImage(file) {
+  // --- BULLETPROOF ULTRA-FAST COMPRESSION WITH FAILSAFE TIMEOUT & FALLBACK ---
+  function compressImage(file, label) {
+    label = label || "Photo";
     return new Promise((resolve) => {
-      let reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        let img = new Image();
-        img.src = event.target.result;
-        img.onload = () => {
-          let canvas = document.createElement('canvas');
-          let ctx = canvas.getContext('2d');
-          let maxWidth = 700; 
-          let scale = maxWidth / img.width;
-          let newWidth = img.width > maxWidth ? maxWidth : img.width;
-          let newHeight = img.width > maxWidth ? img.height * scale : img.height;
-          canvas.width = newWidth;
-          canvas.height = newHeight;
-          ctx.drawImage(img, 0, 0, newWidth, newHeight);
-          let base64 = canvas.toDataURL('image/jpeg', 0.5); 
-          resolve({ name: file.name, mimeType: 'image/jpeg', data: base64.split(',')[1] });
-        };
+      // 6-second safety timeout: If compression hangs on any photo, fallback to direct base64 immediately!
+      const timer = setTimeout(() => {
+        console.warn(`[Timeout] ${label} compression timed out. Falling back to direct read.`);
+        directReadBase64(file).then(resolve);
+      }, 6000);
+
+      const finish = (result) => {
+        clearTimeout(timer);
+        resolve(result);
       };
+
+      // 1. Try modern createImageBitmap (fastest, hardware-accelerated, lowest memory on Android)
+      if (typeof window.createImageBitmap === 'function') {
+        createImageBitmap(file)
+          .then((bitmap) => {
+            try {
+              const maxDim = 800;
+              let w = bitmap.width;
+              let h = bitmap.height;
+              if (w > maxDim || h > maxDim) {
+                if (w > h) {
+                  h = Math.round((h * maxDim) / w);
+                  w = maxDim;
+                } else {
+                  w = Math.round((w * maxDim) / h);
+                  h = maxDim;
+                }
+              }
+              const canvas = document.createElement('canvas');
+              canvas.width = w;
+              canvas.height = h;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(bitmap, 0, 0, w, h);
+              if (typeof bitmap.close === 'function') bitmap.close();
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+              const b64 = dataUrl.split(',')[1];
+              if (b64 && b64.length > 50) {
+                return finish({ name: file.name, mimeType: 'image/jpeg', data: b64 });
+              }
+              throw new Error("Empty canvas result");
+            } catch (canvasErr) {
+              fallbackViaImage(file).then(finish);
+            }
+          })
+          .catch(() => {
+            fallbackViaImage(file).then(finish);
+          });
+        return;
+      }
+
+      // 2. Fallback via Image object
+      fallbackViaImage(file).then(finish);
+    });
+  }
+
+  function fallbackViaImage(file) {
+    return new Promise((resolve) => {
+      try {
+        const reader = new FileReader();
+        reader.onerror = () => directReadBase64(file).then(resolve);
+        reader.onload = (e) => {
+          try {
+            const img = new Image();
+            img.onerror = () => directReadBase64(file).then(resolve);
+            img.onload = () => {
+              try {
+                const maxDim = 800;
+                let w = img.width || 800;
+                let h = img.height || 600;
+                if (w > maxDim || h > maxDim) {
+                  if (w > h) {
+                    h = Math.round((h * maxDim) / w);
+                    w = maxDim;
+                  } else {
+                    w = Math.round((w * maxDim) / h);
+                    h = maxDim;
+                  }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, w, h);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+                const b64 = dataUrl.split(',')[1];
+                if (b64 && b64.length > 50) {
+                  resolve({ name: file.name, mimeType: 'image/jpeg', data: b64 });
+                } else {
+                  directReadBase64(file).then(resolve);
+                }
+              } catch (ex) {
+                directReadBase64(file).then(resolve);
+              }
+            };
+            img.src = e.target.result;
+          } catch (ex) {
+            directReadBase64(file).then(resolve);
+          }
+        };
+        reader.readAsDataURL(file);
+      } catch (ex) {
+        directReadBase64(file).then(resolve);
+      }
+    });
+  }
+
+  function directReadBase64(file) {
+    return new Promise((resolve) => {
+      try {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const res = e.target.result || "";
+          const parts = res.split(',');
+          resolve({
+            name: file.name,
+            mimeType: file.type || 'image/jpeg',
+            data: parts.length > 1 ? parts[1] : parts[0]
+          });
+        };
+        reader.onerror = () => {
+          resolve({ name: file.name, mimeType: file.type || 'image/jpeg', data: "" });
+        };
+        reader.readAsDataURL(file);
+      } catch (e) {
+        resolve({ name: file.name, mimeType: file.type || 'image/jpeg', data: "" });
+      }
     });
   }
 
@@ -497,57 +606,64 @@
     const msg = document.getElementById("message");
 
     btn.disabled = true;
-    btn.innerText = "Compressing Photos... Please wait ⏳";
-    msg.style.color = "blue";
-    msg.innerText = "";
+    btn.classList.remove("btn-ready");
+    btn.innerText = "Processing Photos... ⏳";
+    msg.style.color = "#1565c0";
+    msg.innerText = "Optimizing photos for super-fast upload...";
 
     try {
-      const getB64Array = async (inputId) => {
+      const getB64Array = async (inputId, label) => {
         let arr = [];
-        let files = document.getElementById(inputId).files;
+        let inputElem = document.getElementById(inputId);
+        let files = inputElem && inputElem.files ? inputElem.files : [];
         for (let i = 0; i < files.length; i++) {
-           arr.push(await compressImage(files[i]));
+           btn.innerText = `Compressing ${label} (${i + 1}/${files.length}) ⏳`;
+           msg.innerText = `Processing ${label} Photo ${i + 1} of ${files.length}...`;
+           arr.push(await compressImage(files[i], `${label} ${i + 1}`));
            await delay(10);
         }
         return arr;
       };
 
-      let invoicePhotosB64 = await getB64Array('invoicePhotos');
-      let boxPhotosB64 = await getB64Array('boxPhotos');
-      let pavtiPhotosB64 = await getB64Array('pavtiPhotos');
+      let invoicePhotosB64 = await getB64Array('invoicePhotos', 'Invoice');
+      let boxPhotosB64 = await getB64Array('boxPhotos', 'Box');
+      let pavtiPhotosB64 = await getB64Array('pavtiPhotos', 'Pavti');
 
       let items = [];
       let productBoxes = document.querySelectorAll('.product-box');
       
       for (let i = 0; i < productBoxes.length; i++) {
          let box = productBoxes[i];
-         let pPhotoFile = box.querySelector('[name="productPhoto"]').files[0];
+         let pPhotoInput = box.querySelector('[name="productPhoto"]');
+         let pPhotoFile = pPhotoInput && pPhotoInput.files ? pPhotoInput.files[0] : null;
          let pPhotoB64 = null;
          if (pPhotoFile) {
-            pPhotoB64 = await compressImage(pPhotoFile);
+            btn.innerText = `Compressing Item ${i + 1} Photo ⏳`;
+            msg.innerText = `Processing Product Photo for Item ${i + 1}...`;
+            pPhotoB64 = await compressImage(pPhotoFile, `Item ${i + 1} Photo`);
          }
 
          items.push({
-            category: box.querySelector('[name="category"]').value,
-            modelName: box.querySelector('[name="modelName"]').value,
-            piecesPerCarton: box.querySelector('[name="piecesPerCarton"]').value,
-            actualQty: box.querySelector('[name="actualQty"]').value,
-            shortageQty: box.querySelector('[name="shortageQty"]').value,
-            doaQty: box.querySelector('[name="doaQty"]').value,
+            category: box.querySelector('[name="category"]') ? box.querySelector('[name="category"]').value : "",
+            modelName: box.querySelector('[name="modelName"]') ? box.querySelector('[name="modelName"]').value : "",
+            piecesPerCarton: box.querySelector('[name="piecesPerCarton"]') ? box.querySelector('[name="piecesPerCarton"]').value : "0",
+            actualQty: box.querySelector('[name="actualQty"]') ? box.querySelector('[name="actualQty"]').value : "0",
+            shortageQty: box.querySelector('[name="shortageQty"]') ? box.querySelector('[name="shortageQty"]').value : "0",
+            doaQty: box.querySelector('[name="doaQty"]') ? box.querySelector('[name="doaQty"]').value : "0",
             productPhotoB64: pPhotoB64 
          });
       }
 
       let payload = {
-         inwardDate: document.querySelector('[name="inwardDate"]').value,
-         inwardTime: document.querySelector('[name="inwardTime"]').value,
-         staffName: document.querySelector('[name="staffName"]').value,
-         commonBrand: document.querySelector('#commonBrand').value, 
-         transporter: document.querySelector('[name="transporter"]').value, 
-         lrNumber: document.querySelector('[name="lrNumber"]').value,
-         masterCartons: document.querySelector('[name="masterCartons"]').value,
-         invoiceNo: document.querySelector('[name="invoiceNo"]').value,
-         invoiceDate: document.querySelector('[name="invoiceDate"]').value,
+         inwardDate: document.querySelector('[name="inwardDate"]') ? document.querySelector('[name="inwardDate"]').value : "",
+         inwardTime: document.querySelector('[name="inwardTime"]') ? document.querySelector('[name="inwardTime"]').value : "",
+         staffName: document.querySelector('[name="staffName"]') ? document.querySelector('[name="staffName"]').value : "",
+         commonBrand: document.querySelector('#commonBrand') ? document.querySelector('#commonBrand').value : "", 
+         transporter: document.querySelector('[name="transporter"]') ? document.querySelector('[name="transporter"]').value : "", 
+         lrNumber: document.querySelector('[name="lrNumber"]') ? document.querySelector('[name="lrNumber"]').value : "",
+         masterCartons: document.querySelector('[name="masterCartons"]') ? document.querySelector('[name="masterCartons"]').value : "0",
+         invoiceNo: document.querySelector('[name="invoiceNo"]') ? document.querySelector('[name="invoiceNo"]').value : "",
+         invoiceDate: document.querySelector('[name="invoiceDate"]') ? document.querySelector('[name="invoiceDate"]').value : "",
          missingModel: document.querySelector('[name="missingProduct"]') ? document.querySelector('[name="missingProduct"]').value : "-",
          missingQty: document.querySelector('[name="missingQty"]') ? document.querySelector('[name="missingQty"]').value : "0",
          invoicePhotosB64: invoicePhotosB64,
@@ -557,11 +673,12 @@
       };
 
       btn.innerText = "Saving to Google Server (Super Fast) 🚀...";
+      msg.innerText = "Saving data and uploading to Google Cloud...";
 
       google.script.run
         .withSuccessHandler(function(response) {
           msg.innerText = response;
-          if (response.includes("✅")) {
+          if (response && response.includes("✅")) {
             msg.style.color = "green";
             form.reset(); 
             document.querySelectorAll('.product-box:not(:first-child)').forEach(el => el.remove());
@@ -578,14 +695,15 @@
         })
         .withFailureHandler(function(error) {
           msg.style.color = "red";
-          msg.innerText = "Error: " + error.message;
+          msg.innerText = "Error: " + (error ? (error.message || error) : "Submission failed");
           checkPhotosRequired();
         })
         .processFormFast(JSON.stringify(payload)); 
 
     } catch (e) {
+      console.error("Submission error:", e);
       msg.style.color = "red";
-      msg.innerText = "Error processing data!";
+      msg.innerText = "Error processing photos: " + (e ? e.message : "Unknown error");
       checkPhotosRequired();
     }
   }

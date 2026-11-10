@@ -61,12 +61,13 @@ function getInwardHistory() {
     var invNo = data[i][6] ? data[i][6].toString().trim() : "";
     if (!invNo) continue;
 
-    var uniqueKey = invNo + "_" + data[i][0];
+    var uniqueKey = invNo + "_" + data[i][0] + "_" + (data[i][1] ? data[i][1].toString().trim() : "");
 
     if (!invoices[uniqueKey]) {
       invoices[uniqueKey] = {
         invoice: invNo,
         inwardDate: data[i][0],
+        inwardTime: data[i][1] ? data[i][1].toString().trim() : "-",
         transporter: data[i][3],       
         staff: data[i][2],
         commonBrand: data[i][8] ? data[i][8] : "-",                   

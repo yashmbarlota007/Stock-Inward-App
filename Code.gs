@@ -100,6 +100,27 @@ function getInwardHistory() {
 function processFormFast(payloadStr) {
   try {
     var data = JSON.parse(payloadStr);
+
+    // 🔒 STRICT MANDATORY PHOTOS ENFORCEMENT ON BACKEND 🔒
+    if (!data.invoicePhotosB64 || !Array.isArray(data.invoicePhotosB64) || data.invoicePhotosB64.length === 0) {
+      throw new Error("REJECTED: Invoice Photo missing hai! Upload karna mandatory hai.");
+    }
+    if (!data.boxPhotosB64 || !Array.isArray(data.boxPhotosB64) || data.boxPhotosB64.length === 0) {
+      throw new Error("REJECTED: Box Photo missing hai! Upload karna mandatory hai.");
+    }
+    if (!data.pavtiPhotosB64 || !Array.isArray(data.pavtiPhotosB64) || data.pavtiPhotosB64.length === 0) {
+      throw new Error("REJECTED: Pavti Photo missing hai! Upload karna mandatory hai.");
+    }
+    if (!data.items || !Array.isArray(data.items) || data.items.length === 0) {
+      throw new Error("REJECTED: Kam se kam 1 item hona zaroori hai.");
+    }
+
+    for (var v = 0; v < data.items.length; v++) {
+      var itm = data.items[v];
+      if (!itm.productPhotoB64 || !itm.productPhotoB64.data || itm.productPhotoB64.data.length < 50) {
+        throw new Error("REJECTED: Item " + (v + 1) + " (" + (itm.modelName || "Item") + ") ki photo missing hai! Har item ki photo upload karna compulsory hai.");
+      }
+    }
     
     var sheetUrl = "https://docs.google.com/spreadsheets/d/1HgFw1etD-9LgPHLOI3fyXjUpOwye_HfP2VYyv7rsKt4/edit";
     var sheet = SpreadsheetApp.openByUrl(sheetUrl).getSheets()[0]; 

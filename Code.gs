@@ -135,7 +135,9 @@ function processFormFast(payloadStr) {
         if (!fileData || !fileData.data || fileData.data.length < 50) continue;
         try {
           var blob = Utilities.newBlob(Utilities.base64Decode(fileData.data), fileData.mimeType || "image/jpeg", fileData.name || ("photo_" + (i + 1) + ".jpg"));
-          urls.push(folder.createFile(blob).getUrl());
+          var f = folder.createFile(blob);
+          try { f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+          urls.push(f.getUrl());
         } catch (uploadErr) {
           Logger.log("Upload error for file " + i + ": " + uploadErr.message);
         }
@@ -157,7 +159,9 @@ function processFormFast(payloadStr) {
       if (item.productPhotoB64 && item.productPhotoB64.data && item.productPhotoB64.data.length > 50) {
         try {
           var pBlob = Utilities.newBlob(Utilities.base64Decode(item.productPhotoB64.data), item.productPhotoB64.mimeType || "image/jpeg", item.productPhotoB64.name || "prod.jpg");
-          pPhotoUrl = folder.createFile(pBlob).getUrl();
+          var pf = folder.createFile(pBlob);
+          try { pf.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+          pPhotoUrl = pf.getUrl();
         } catch (pErr) {
           Logger.log("Product photo upload error: " + pErr.message);
         }

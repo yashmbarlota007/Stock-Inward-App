@@ -1,6 +1,6 @@
 function doGet() {
   return HtmlService.createHtmlOutputFromFile('Index')
-      .setTitle('Yash Marketing - Stock Inward')
+      .setTitle('Yash Marketing - Box Inward')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL); 
 }

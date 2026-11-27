@@ -43,8 +43,41 @@ function getDropdownData() {
       if (tName) allTransporters.push(tName);
     }
   }
+
+  // 🔥 COMPANY / PARTY NAMES DROPDOWN LIST 🔥
+  var compSheet = ss.getSheetByName("Companies") || ss.getSheetByName("Parties");
+  var allCompanies = [];
+  if (compSheet) {
+    var compData = compSheet.getDataRange().getDisplayValues();
+    for (var c = 1; c < compData.length; c++) {
+      var cName = compData[c][0] ? compData[c][0].toString().trim() : "";
+      if (cName && allCompanies.indexOf(cName) === -1) allCompanies.push(cName);
+    }
+  } else {
+    try {
+      var newCompSheet = ss.insertSheet("Companies");
+      newCompSheet.getRange(1, 1).setValue("Company Name");
+    } catch(e) {}
+  }
+
+  // Also collect any unique companies already entered in Stock Inward sheet (Column P / index 15)
+  var mainSheet = ss.getSheets()[0];
+  if (mainSheet && mainSheet.getLastRow() > 1) {
+    var histComps = mainSheet.getRange(2, 16, Math.min(mainSheet.getLastRow() - 1, 300), 1).getDisplayValues();
+    for (var h = 0; h < histComps.length; h++) {
+      var hc = histComps[h][0] ? histComps[h][0].toString().trim() : "";
+      if (hc && hc !== "-" && allCompanies.indexOf(hc) === -1) {
+        allCompanies.push(hc);
+      }
+    }
+  }
+
+  // Ensure Column P header is labeled "Company Name" if empty
+  if (mainSheet && (!mainSheet.getRange(1, 16).getValue() || mainSheet.getRange(1, 16).getValue().toString().trim() === "")) {
+    mainSheet.getRange(1, 16).setValue("Company Name");
+  }
   
-  return { products: allProducts, staffs: allStaffs, transporters: allTransporters };
+  return { products: allProducts, staffs: allStaffs, transporters: allTransporters, companies: allCompanies };
 }
 
 // 🔥 HISTORY FETCHING MEIN BHI COLUMN MAPPING THEEK KAR DI 🔥
@@ -71,7 +104,7 @@ function getInwardHistory() {
         transporter: data[i][3],       
         staff: data[i][2],
         commonBrand: data[i][8] ? data[i][8] : "-",                   
-        // P (15) Khali Hai
+        company: data[i][15] && data[i][15] !== "-" ? data[i][15].toString().trim() : "-", // P (15) Company Name
         invoicePhotos: data[i][16] && data[i][16] !== "-" ? data[i][16] : "No Photo", // Q (16)
         boxPhotos: data[i][17] && data[i][17] !== "-" ? data[i][17] : "No Photo",     // R (17)
         pavtiPhotos: data[i][18] && data[i][18] !== "-" ? data[i][18] : "No Photo",   // S (18)
@@ -183,7 +216,7 @@ function processFormFast(payloadStr) {
         item.actualQty || "0",            // M: Actual Found Qty
         item.shortageQty || "0",          // N: Shortage Qty
         item.doaQty || "0",               // O: DOA
-        "-",                              // P: (KHALI / EMPTY)
+        data.companyName || "-",          // P: Company Name (Party Name)
         finalInvoiceUrl,                  // Q: Invoice Photo
         finalBoxUrl,                      // R: Box Photo
         finalPavtiUrl,                    // S: Pavti Photo
@@ -196,6 +229,31 @@ function processFormFast(payloadStr) {
     if (rowsToAppend.length > 0) {
       var startRow = sheet.getLastRow() + 1;
       sheet.getRange(startRow, 1, rowsToAppend.length, rowsToAppend[0].length).setValues(rowsToAppend);
+
+      // Auto-add new company to Companies sheet master list if not already present
+      if (data.companyName && data.companyName.trim() !== "" && data.companyName.trim() !== "-") {
+        try {
+          var compSh = ss.getSheetByName("Companies");
+          if (!compSh) {
+            compSh = ss.insertSheet("Companies");
+            compSh.getRange(1, 1).setValue("Company Name");
+          }
+          var compListVals = compSh.getDataRange().getDisplayValues();
+          var compFound = false;
+          var cleanComp = data.companyName.trim();
+          for (var cl = 1; cl < compListVals.length; cl++) {
+            if (compListVals[cl][0] && compListVals[cl][0].toLowerCase().trim() === cleanComp.toLowerCase()) {
+              compFound = true;
+              break;
+            }
+          }
+          if (!compFound) {
+            compSh.appendRow([cleanComp]);
+          }
+        } catch(compErr) {
+          Logger.log("Company auto-append note: " + compErr.message);
+        }
+      }
     }
     
     return "✅ " + count + " Items Saved Super Fast & Successfully!";

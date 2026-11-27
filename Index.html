@@ -145,6 +145,13 @@
               <ul class="dropdown-list"></ul>
             </div>
           </div>
+          <div>
+            <label>Company Name (Party Name) <span class="req">*</span></label>
+            <div class="custom-dropdown">
+              <input type="text" id="companyName" name="companyName" class="custom-input dynamic-company" required placeholder="Select or type Company / Party..." autocomplete="off" autocorrect="off" spellcheck="false">
+              <ul class="dropdown-list"></ul>
+            </div>
+          </div>
           <div><label>LR Number</label><input type="text" name="lrNumber" autocomplete="off" autocorrect="off" spellcheck="false"></div>
           <div><label>Total Master Cartons</label><input type="number" name="masterCartons"></div>
           <div><label>Invoice Number <span class="req">*</span></label><input type="text" name="invoiceNo" required autocomplete="off" autocorrect="off" spellcheck="false"></div>
@@ -217,7 +224,7 @@
     </div>
 
     <div id="historySection" style="display: none;">
-      <input type="text" id="historySearchBox" placeholder="🔍 Search Invoice, Transporter, or Model..." onkeyup="filterHistory()">
+      <input type="text" id="historySearchBox" placeholder="🔍 Search Invoice, Transporter, Brand, Company, or Model..." onkeyup="filterHistory()">
       <div id="historyLoading" style="text-align:center; font-weight:bold; color:#3f51b5; padding: 20px;">
         Fetching Invoices... ⏳
       </div>
@@ -230,7 +237,8 @@
 <script>
   let allProductsData = [];
   let staffListObj = []; 
-  let transporterList = []; 
+  let transporterList = [];
+  let companyList = []; 
   let productCount = 1;
   let cachedBrands = [];
 
@@ -373,7 +381,8 @@
       .withSuccessHandler(function(data) {
         allProductsData = data.products;
         staffListObj = data.staffs; 
-        transporterList = data.transporters || []; 
+        transporterList = data.transporters || [];
+        companyList = data.companies || []; 
         
         cachedBrands = [...new Set(allProductsData.map(i => i.b))].filter(Boolean);
         
@@ -407,6 +416,7 @@
   }
 
   function getItemsForInput(input) {
+    if (input.classList.contains("dynamic-company")) return companyList;
     if (input.classList.contains("dynamic-transporter")) return transporterList;
     if (input.classList.contains("dynamic-brand")) return cachedBrands;
     
@@ -788,6 +798,7 @@
          inwardDate: document.querySelector('[name="inwardDate"]') ? document.querySelector('[name="inwardDate"]').value : "",
          inwardTime: document.querySelector('[name="inwardTime"]') ? document.querySelector('[name="inwardTime"]').value : "",
          staffName: document.querySelector('[name="staffName"]') ? document.querySelector('[name="staffName"]').value : "",
+         companyName: document.querySelector('#companyName') ? document.querySelector('#companyName').value.trim() : "",
          commonBrand: document.querySelector('#commonBrand') ? document.querySelector('#commonBrand').value : "", 
          transporter: document.querySelector('[name="transporter"]') ? document.querySelector('[name="transporter"]').value : "", 
          lrNumber: document.querySelector('[name="lrNumber"]') ? document.querySelector('[name="lrNumber"]').value : "",
@@ -817,6 +828,7 @@
                 el.value = '0';
             });
             productCount = 1;
+            if (document.querySelector('#companyName')) document.querySelector('#companyName').value = '';
             setDefaultDateTimeIfEmpty();
             checkPhotosRequired(); 
           } else {
@@ -930,6 +942,7 @@
                 <div>🧾 Inv: ${inv.invoice}</div>
                 <div style="font-size:12px; font-weight:bold; color:#1a237e; text-align:right;">📅 ${inv.inwardDate || '-'}${timeBadge}</div>
               </div>
+              <p>🏢 <b>Company:</b> <span style="font-weight:600; color:#1a237e;">${inv.company && inv.company !== '-' ? inv.company : '-'}</span></p>
               <p>🏷️ <b>Brand Name:</b> ${inv.commonBrand}</p>
               <p>🚗 <b>Transporter:</b> ${inv.transporter}</p>
               ${timeRow}
@@ -982,6 +995,7 @@ function saveFormData() {
     masterCartons: document.querySelector('[name="masterCartons"]').value,
     invoiceNo: document.querySelector('[name="invoiceNo"]').value,
     invoiceDate: document.querySelector('[name="invoiceDate"]').value,
+    companyName: document.querySelector('#companyName') ? document.querySelector('#companyName').value : '',
   };
   localStorage.setItem('yashStockDraft', JSON.stringify(formData));
 }
@@ -1017,8 +1031,10 @@ function loadFormData() {
     document.querySelector('[name="masterCartons"]').value = formData.masterCartons || '';
     document.querySelector('[name="invoiceNo"]').value = formData.invoiceNo || '';
     document.querySelector('[name="invoiceDate"]').value = formData.invoiceDate || '';
+    if (document.querySelector('#companyName')) document.querySelector('#companyName').value = formData.companyName || '';
   }
-  setDefaultDateTimeIfEmpty();
+  if (document.querySelector('#companyName')) document.querySelector('#companyName').value = '';
+            setDefaultDateTimeIfEmpty();
 }
 
 // 4. PAGE LOAD HOTE HI DATA BHAR DEGA
